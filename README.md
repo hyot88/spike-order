@@ -1,12 +1,12 @@
-# 🚀 배달앱 시스템 아키텍처 - 대량 주문 이벤트 대응 가이드
+# 🚀 배달앱 시스템 아키텍처 - 대량 주문 이벤트 대응 (개발 진행 중)
 
 ## 📋 목차
 
-1. [아키텍처 개요](#아키텍처-개요)
-2. [핵심 플로우 상세](#핵심-플로우-상세)
-3. [문제 상황별 해결책](#문제-상황별-해결책)
-4. [핵심 컴포넌트 상세](#핵심-컴포넌트-상세)
-5. [면접 대비 핵심 포인트](#면접-대비-핵심-포인트)
+1. 아키텍처-개요
+2. 핵심 플로우 상세
+3. 문제 상황별 해결책
+4. 핵심 컴포넌트 상세
+5. 면접 대비 핵심 포인트
 
 ---
 
@@ -29,6 +29,7 @@
 | **장애 격리** | 외부 시스템 장애 전파 방지 | Circuit Breaker, Timeout |
 | **데이터 정합성** | 분산 환경에서 일관성 보장 | SAGA 패턴, 멱등키 |
 | **확장성** | 수평 확장 가능한 구조 | 샤딩, Kafka 파티션 |
+| **ORM** | 객체-관계 매핑으로 생산성 향상 | Spring Data JPA |
 
 ---
 
@@ -88,10 +89,10 @@ Token Bucket 알고리즘
 [주문 API] → ⑫ PENDING 응답 → [Client]
 ```
 
-**핫패스(가장 빈번하게 실행되어 성능이 매우 중요한 경로) 설계 핵심:**
+**핫패스(가장 빈번하게 실행되어 성능이 매우 중요한 경로) 설계 핵심 (Spring Data JPA 사용):**
 
 ```java
-@Transactional
+@Transactional  // JPA 트랜잭션 관리
 public OrderResponse createOrder(OrderRequest request) {
     // 1. 멱등키 확인 (Redis)
     if (idempotencyService.isDuplicate(request.getIdempotencyKey())) {
@@ -101,9 +102,9 @@ public OrderResponse createOrder(OrderRequest request) {
     // 2. 재고 예약 (동기)
     inventoryService.reserve(request.getItems());
     
-    // 3. 주문 저장 + Outbox 기록 (단일 트랜잭션)
-    Order order = orderRepository.save(toOrder(request));
-    outboxRepository.save(new OutboxEvent("order-created", order));
+    // 3. 주문 저장 + Outbox 기록 (JPA 단일 트랜잭션으로 원자성 보장)
+    Order order = orderRepository.save(toOrder(request));  // JpaRepository
+    outboxRepository.save(new OutboxEvent("order-created", order));  // JpaRepository
     
     // 4. 즉시 응답 (PENDING 상태)
     return new OrderResponse(order.getId(), OrderStatus.PENDING);
@@ -395,28 +396,28 @@ public Order getOrder(String orderId) {
 
 - **역할:** 캐시, 분산 락, Pub/Sub
 - **활용:**
-    - 멱등키 저장 (TTL)
-    - 조회 캐시 (Cache-Aside)
-    - 캐시 무효화 (Pub/Sub)
-    - Singleflight 잠금
+  - 멱등키 저장 (TTL)
+  - 조회 캐시 (Cache-Aside)
+  - 캐시 무효화 (Pub/Sub)
+  - Singleflight 잠금
 - **면접 포인트:** "TTL로 자동 만료, Pub/Sub으로 캐시 일관성 유지"
 
 ### Kafka
 
 - **역할:** 이벤트 스트리밍 플랫폼
 - **특징:**
-    - ISR 복제로 데이터 안정성
-    - 파티션으로 병렬 처리
-    - Consumer Group으로 부하 분산
+  - ISR 복제로 데이터 안정성
+  - 파티션으로 병렬 처리
+  - Consumer Group으로 부하 분산
 - **면접 포인트:** "min.insync.replicas와 acks=all로 메시지 유실 방지"
 
 ### Flink
 
 - **역할:** 실시간 스트림 처리
 - **활용:**
-    - 실시간 집계 (주문량, 매출)
-    - CEP(복합 이벤트 처리, Complex Event Processing) 기반 이상 탐지
-    - 데이터 파이프라인
+  - 실시간 집계 (주문량, 매출)
+  - CEP(복합 이벤트 처리, Complex Event Processing) 기반 이상 탐지
+  - 데이터 파이프라인
 - **State Backend:** RocksDB (대용량 상태 저장)
 - **면접 포인트:** "Exactly-once 처리와 Checkpointing으로 장애 복구"
 
@@ -425,6 +426,72 @@ public Order getOrder(String orderId) {
 - **역할:** 분산 추적 시스템
 - **구성:** Trace ID → 여러 Span
 - **면접 포인트:** "서비스간 호출 지연 구간을 시각화하여 병목 분석"
+
+### Spring Data JPA
+
+- **역할:** 객체-관계 매핑 (ORM)
+- **활용:**
+  - Entity 기반 도메인 모델링
+  - Repository 패턴으로 데이터 액세스 추상화
+  - @Transactional을 통한 선언적 트랜잭션 관리
+  - Outbox 테이블과 주문 테이블의 단일 트랜잭션 처리
+- **면접 포인트:** "JPA의 변경 감지(Dirty Checking)와 지연 로딩(Lazy Loading)으로 성능 최적화, 단일 트랜잭션 내에서 Outbox 패턴 구현"
+
+**JPA 엔티티 예시:**
+
+```java
+@Entity
+@Table(name = "orders")
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false)
+    private String storeId;
+    
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
+    
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    private List<OrderItem> items = new ArrayList<>();
+    
+    private LocalDateTime createdAt;
+}
+
+@Entity
+@Table(name = "outbox_events")
+public class OutboxEvent {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    private String eventType;
+    
+    @Column(columnDefinition = "TEXT")
+    private String payload;
+    
+    private boolean processed = false;
+    
+    private LocalDateTime createdAt;
+}
+```
+
+**Repository 예시:**
+
+```java
+public interface OrderRepository extends JpaRepository<Order, Long> {
+    // 키셋 페이징을 위한 쿼리 메서드
+    List<Order> findByCreatedAtBeforeOrderByCreatedAtDesc(
+        LocalDateTime cursor, Pageable pageable);
+    
+    Optional<Order> findByIdempotencyKey(String idempotencyKey);
+}
+
+public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> {
+    List<OutboxEvent> findByProcessedFalseOrderByCreatedAtAsc(Pageable pageable);
+}
+```
 
 ---
 
@@ -493,6 +560,7 @@ public Order getOrder(String orderId) {
 - [x] Cache-Aside
 - [x] Singleflight
 - [x] 서킷브레이커
+- [x] Spring Data JPA
 
 ---
 
