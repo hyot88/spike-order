@@ -1,0 +1,227 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#0288d1', 'lineColor': '#37474f', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#f3e5f5'}}}%%
+
+flowchart TB
+    %% ═══════════════════════════════════════════════════════════════
+    %% 🎯 배달앱 시스템 아키텍처 - 대량 주문 이벤트 대응
+    %% ═══════════════════════════════════════════════════════════════
+
+    %% ───────────────────────────────────────────────────────────────
+    %% 클라이언트 & 인증 영역
+    %% ───────────────────────────────────────────────────────────────
+    subgraph CLIENT["👤 클라이언트 영역"]
+        direction LR
+        Mobile["📱 모바일 앱"]
+        Web["🌐 웹 브라우저"]
+    end
+
+    subgraph AUTH["🔐 인증 영역"]
+        KeyCloak["🔑 KeyCloak<br/>인증서버<br/>───<br/>JWT 토큰 발급<br/>OAuth2/OIDC"]
+    end
+
+    %% ───────────────────────────────────────────────────────────────
+    %% API Gateway & 서비스 디스커버리
+    %% ───────────────────────────────────────────────────────────────
+    subgraph GATEWAY["🚪 API Gateway 영역"]
+        direction TB
+        APIGateway["🚀 API Gateway<br/>───<br/>• JWT 토큰 검증<br/>• Rate Limiter ⚡<br/>• 라우팅<br/>• Trace ID 주입"]
+        
+        RateLimiter["⚡ Rate Limiter<br/>───<br/>Token Bucket<br/>사용자/IP별 제한"]
+    end
+
+    subgraph DISCOVERY["🔍 서비스 디스커버리"]
+        Eureka["📋 Eureka Server<br/>───<br/>서비스 레지스트리<br/>Health Check<br/>로드밸런싱 정보"]
+    end
+
+    subgraph TRACING["📊 분산 추적"]
+        Zipkin["🔬 Zipkin<br/>───<br/>Trace ID 수집<br/>Span 시각화<br/>지연 분석"]
+    end
+
+    %% ───────────────────────────────────────────────────────────────
+    %% 핵심 마이크로서비스 영역
+    %% ───────────────────────────────────────────────────────────────
+    subgraph SERVICES["⚙️ 마이크로서비스 영역"]
+        direction TB
+        
+        subgraph ORDER_SVC["📦 주문 서비스 (핫패스)"]
+            OrderAPI["🛒 주문 API<br/>───<br/>Feign Client<br/>Resilience4j<br/>• Circuit Breaker<br/>• Timeout<br/>• Retry + 멱등키"]
+        end
+
+        subgraph PAYMENT_SVC["💳 결제 서비스"]
+            PaymentAPI["💰 결제 API<br/>───<br/>PG 연동<br/>• 서킷브레이커<br/>• 타임아웃<br/>• 멱등키 검증"]
+            
+            PGGateway["🏦 PG Gateway<br/>───<br/>외부 결제사 연동<br/>Fallback 처리"]
+        end
+
+        subgraph INVENTORY_SVC["📦 재고 서비스"]
+            InventoryAPI["📊 재고 API<br/>───<br/>재고 예약/차감<br/>SAGA 보상 지원"]
+        end
+
+        subgraph NOTIFICATION_SVC["🔔 알림 서비스"]
+            NotificationAPI["📨 알림 API<br/>───<br/>Push/SMS/카카오<br/>비동기 발송"]
+        end
+
+        subgraph QUERY_SVC["🔍 조회 서비스 (CQRS)"]
+            QueryAPI["📖 조회 API<br/>───<br/>주문목록/검색<br/>키셋 페이징"]
+        end
+    end
+
+    %% ───────────────────────────────────────────────────────────────
+    %% 데이터 저장소 영역
+    %% ───────────────────────────────────────────────────────────────
+    subgraph DATABASES["🗄️ 데이터 저장소"]
+        direction TB
+        
+        subgraph WRITE_DB["✏️ 쓰기 DB (Master)"]
+            OrderDB["🗃️ 주문 DB<br/>───<br/>PostgreSQL<br/>• 샤딩 (가게ID 기준)<br/>• Outbox 테이블<br/>• 트랜잭션 보장"]
+            
+            Outbox["📤 Outbox 테이블<br/>───<br/>이벤트 저장<br/>발행 상태 관리"]
+        end
+
+        subgraph READ_DB["📖 읽기 모델 (CQRS)"]
+            ReplicaDB["🔄 Replica DB<br/>───<br/>읽기 전용<br/>비동기 복제"]
+            
+            ElasticSearch["🔎 Elasticsearch<br/>───<br/>주문 검색<br/>실시간 인덱싱"]
+        end
+    end
+
+    subgraph CACHE["⚡ 캐시 영역"]
+        direction TB
+        Redis["🔴 Redis Cluster<br/>───<br/>• Cache-Aside<br/>• Singleflight 잠금<br/>• TTL 관리<br/>• Pub/Sub 이벤트<br/>• 멱등키 저장"]
+    end
+
+    %% ───────────────────────────────────────────────────────────────
+    %% 메시지 큐 & 이벤트 처리
+    %% ───────────────────────────────────────────────────────────────
+    subgraph MESSAGE_QUEUE["📬 메시지 큐 영역"]
+        direction TB
+        
+        OutboxWorker["⚙️ Outbox Worker<br/>───<br/>폴링/CDC<br/>이벤트 발행"]
+        
+        subgraph KAFKA["📡 Kafka Cluster"]
+            KafkaBroker["🎯 Kafka Broker<br/>───<br/>• ISR 복제<br/>• 파티션 분산<br/>• 순서 보장"]
+            
+            Topics["📋 Topics<br/>───<br/>order-events<br/>payment-events<br/>inventory-events"]
+        end
+    end
+
+    %% ───────────────────────────────────────────────────────────────
+    %% SAGA 패턴 (보상 트랜잭션)
+    %% ───────────────────────────────────────────────────────────────
+    subgraph SAGA["🔄 SAGA Orchestrator"]
+        SAGACoordinator["🎭 SAGA 코디네이터<br/>───<br/>상태 머신 관리<br/>보상 트랜잭션 실행<br/>• 재고 롤백<br/>• 주문 취소"]
+    end
+
+    %% ───────────────────────────────────────────────────────────────
+    %% 실시간 스트림 처리 & 데이터 파이프라인
+    %% ───────────────────────────────────────────────────────────────
+    subgraph STREAM["🌊 스트림 처리 영역"]
+        direction TB
+        
+        Flink["⚡ Apache Flink<br/>───<br/>• 실시간 집계<br/>• CEP 이벤트 탐지<br/>• RocksDB State Backend<br/>• Checkpointing"]
+        
+        FlinkState["💾 RocksDB<br/>State Backend<br/>───<br/>상태 저장<br/>장애 복구"]
+    end
+
+    subgraph SINK["📥 데이터 싱크"]
+        direction TB
+        DataWarehouse["🏢 Data Warehouse<br/>───<br/>분석용 저장소<br/>BigQuery/Snowflake"]
+        
+        Metrics["📈 Metrics Store<br/>───<br/>실시간 대시보드<br/>주문 현황 모니터링"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════
+    %% 연결 플로우 정의
+    %% ═══════════════════════════════════════════════════════════════
+
+    %% ─── 인증 플로우 ───
+    Mobile & Web -->|"① 토큰 요청"| KeyCloak
+    KeyCloak -->|"② JWT 발급"| Mobile & Web
+    Mobile & Web -->|"③ API 요청<br/>(JWT + 멱등키)"| APIGateway
+
+    %% ─── Gateway 처리 ───
+    APIGateway --> RateLimiter
+    RateLimiter -->|"④ 토큰 검증 &<br/>Rate Limit 체크"| APIGateway
+    APIGateway -->|"⑤ 서비스 조회"| Eureka
+    Eureka -->|"⑥ 인스턴스 정보"| APIGateway
+
+    %% ─── 핫패스: 주문 생성 (동기) ───
+    APIGateway -->|"⑦ 주문 요청<br/>(Trace ID)"| OrderAPI
+    OrderAPI -->|"⑧ 캐시 조회<br/>(싱글플라이트)"| Redis
+    OrderAPI -->|"⑨ 재고 예약 요청"| InventoryAPI
+    InventoryAPI -->|"⑩ 재고 차감"| OrderDB
+    OrderAPI -->|"⑪ 주문 저장 +<br/>Outbox 기록<br/>(단일 트랜잭션)"| OrderDB
+    OrderDB --> Outbox
+    OrderAPI -->|"⑫ PENDING 응답<br/>(200ms 이내)"| APIGateway
+
+    %% ─── 비동기 처리: 이벤트 발행 ───
+    OutboxWorker -->|"⑬ 폴링"| Outbox
+    OutboxWorker -->|"⑭ 이벤트 발행"| KafkaBroker
+    KafkaBroker --> Topics
+
+    %% ─── 비동기: 결제 처리 ───
+    Topics -->|"⑮ order-created<br/>이벤트 구독"| PaymentAPI
+    PaymentAPI -->|"⑯ 멱등키 확인"| Redis
+    PaymentAPI -->|"⑰ PG 승인 요청<br/>(서킷브레이커)"| PGGateway
+    PGGateway -->|"⑱ 결제 결과"| PaymentAPI
+    PaymentAPI -->|"⑲ payment-result<br/>이벤트 발행"| KafkaBroker
+
+    %% ─── 비동기: 알림 발송 ───
+    Topics -->|"⑳ 이벤트 구독"| NotificationAPI
+    NotificationAPI -->|"㉑ Push/SMS 발송"| Mobile
+
+    %% ─── SAGA: 실패 시 보상 ───
+    Topics -->|"㉒ payment-failed<br/>이벤트"| SAGACoordinator
+    SAGACoordinator -->|"㉓ 재고 롤백"| InventoryAPI
+    SAGACoordinator -->|"㉔ 주문 취소<br/>상태 변경"| OrderDB
+    SAGACoordinator -->|"㉕ 보상 완료<br/>이벤트 발행"| KafkaBroker
+
+    %% ─── CQRS: 읽기 모델 동기화 ───
+    Topics -->|"㉖ 이벤트 구독"| ReplicaDB
+    Topics -->|"㉗ 인덱싱"| ElasticSearch
+
+    %% ─── 조회 플로우 ───
+    APIGateway -->|"㉘ 조회 요청"| QueryAPI
+    QueryAPI -->|"㉙ 캐시 히트"| Redis
+    QueryAPI -->|"㉚ 캐시 미스 시<br/>키셋 페이징"| ReplicaDB
+    QueryAPI -->|"㉛ 검색 쿼리"| ElasticSearch
+
+    %% ─── 실시간 스트림 파이프라인 ───
+    KafkaBroker -->|"㉜ 스트림 소비"| Flink
+    Flink --> FlinkState
+    Flink -->|"㉝ 집계 데이터<br/>싱크"| DataWarehouse
+    Flink -->|"㉞ 실시간 메트릭"| Metrics
+    Flink -->|"㉟ 이상 탐지 알림"| Redis
+
+    %% ─── 분산 추적 ───
+    OrderAPI & PaymentAPI & InventoryAPI & QueryAPI -->|"Trace 전송"| Zipkin
+
+    %% ─── Redis Pub/Sub ───
+    Redis -.->|"㊱ 캐시 무효화<br/>Pub/Sub"| QueryAPI
+
+    %% ═══════════════════════════════════════════════════════════════
+    %% 스타일 정의
+    %% ═══════════════════════════════════════════════════════════════
+    
+    classDef clientStyle fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef authStyle fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    classDef gatewayStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef serviceStyle fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef dbStyle fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef cacheStyle fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef kafkaStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef streamStyle fill:#e0f7fa,stroke:#00838f,stroke-width:2px
+    classDef sagaStyle fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    classDef tracingStyle fill:#eceff1,stroke:#455a64,stroke-width:2px
+
+    class Mobile,Web clientStyle
+    class KeyCloak authStyle
+    class APIGateway,RateLimiter gatewayStyle
+    class Eureka tracingStyle
+    class Zipkin tracingStyle
+    class OrderAPI,PaymentAPI,InventoryAPI,NotificationAPI,QueryAPI,PGGateway serviceStyle
+    class OrderDB,Outbox,ReplicaDB,ElasticSearch dbStyle
+    class Redis cacheStyle
+    class OutboxWorker,KafkaBroker,Topics kafkaStyle
+    class Flink,FlinkState streamStyle
+    class DataWarehouse,Metrics streamStyle
+    class SAGACoordinator sagaStyle
