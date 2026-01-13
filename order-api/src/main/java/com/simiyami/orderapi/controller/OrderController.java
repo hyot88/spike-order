@@ -1,0 +1,36 @@
+package com.simiyami.orderapi.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> health() {
+        return ResponseEntity.ok(Map.of("status", "UP", "service", "order-api"));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<Map<String, Object>> getCurrentUser(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Trace-Id", required = false) String traceId) {
+
+        return ResponseEntity.ok(Map.of(
+            "userId", jwt.getSubject(),
+            "username", jwt.getClaimAsString("preferred_username"),
+            "email", jwt.getClaimAsString("email"),
+            "idempotencyKey", idempotencyKey != null ? idempotencyKey : "not provided",
+            "traceId", traceId != null ? traceId : "not provided"
+        ));
+    }
+}
