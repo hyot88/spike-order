@@ -1,1 +1,4 @@
 rootProject.name = 'spike-order'
+
+include 'gateway'
+include 'order-api'
