@@ -4,6 +4,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,6 +33,22 @@ public class OrderController {
             "email", jwt.getClaimAsString("email"),
             "idempotencyKey", idempotencyKey != null ? idempotencyKey : "not provided",
             "traceId", traceId != null ? traceId : "not provided"
+        ));
+    }
+
+    @PostMapping("/test")
+    public ResponseEntity<Map<String, Object>> testPost(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader("X-Idempotency-Key") String idempotencyKey,
+            @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
+            @RequestBody(required = false) Map<String, Object> body) {
+
+        return ResponseEntity.ok(Map.of(
+            "message", "POST request successful",
+            "userId", jwt.getSubject(),
+            "idempotencyKey", idempotencyKey,
+            "traceId", traceId != null ? traceId : "not provided",
+            "body", body != null ? body : Map.of()
         ));
     }
 }

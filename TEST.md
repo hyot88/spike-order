@@ -104,9 +104,15 @@ curl -s -w "\nHTTP Status: %{http_code}\n" \
      -H "Authorization: Bearer $TOKEN" \
      -H "X-Idempotency-Key: $(uuidgen)" \
      -H "Content-Type: application/json" \
-     http://localhost:8081/api/orders/health
+     http://localhost:8081/api/orders/test
 
 # 예상 결과: HTTP Status: 200
+# {
+#   "message": "POST request successful",
+#   "userId": "<user-uuid>",
+#   "idempotencyKey": "<uuid>",
+#   ...
+# }
 ```
 
 ```bash
@@ -115,9 +121,9 @@ curl -s -w "\nHTTP Status: %{http_code}\n" \
      -X POST \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     http://localhost:8081/api/orders/health
+     http://localhost:8081/api/orders/test
 
-# 예상 결과: HTTP Status: 400, X-Error-Message 헤더에 에러 메시지
+# 예상 결과: HTTP Status: 400 (Gateway에서 차단됨)
 ```
 
 ```bash
@@ -127,9 +133,9 @@ curl -s -w "\nHTTP Status: %{http_code}\n" \
      -H "Authorization: Bearer $TOKEN" \
      -H "X-Idempotency-Key: not-a-uuid" \
      -H "Content-Type: application/json" \
-     http://localhost:8081/api/orders/health
+     http://localhost:8081/api/orders/test
 
-# 예상 결과: HTTP Status: 400
+# 예상 결과: HTTP Status: 400 (Gateway에서 차단됨)
 ```
 
 #### Trace ID 테스트

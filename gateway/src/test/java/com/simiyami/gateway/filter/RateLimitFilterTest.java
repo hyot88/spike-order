@@ -39,7 +39,8 @@ class RateLimitFilterTest {
         StepVerifier.create(rateLimitFilter.filter(exchange, filterChain))
             .verifyComplete();
 
-        assertThat(exchange.getResponse().getStatusCode()).isNull(); // 통과
+        // filterChain.filter가 호출되었으므로 상태 코드가 설정되지 않음 (통과)
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
     }
 
     @Test
