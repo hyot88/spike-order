@@ -11,10 +11,21 @@ This is a delivery app order system architecture designed to handle **spike orde
 Multi-module Gradle project:
 ```
 spike-order/
-├── gateway/          # API Gateway (Spring Cloud Gateway)
-├── order-api/        # Order API service
-├── docker-compose.yml
-└── keycloak/         # KeyCloak realm configuration
+├── gateway/                 # API Gateway (Spring Cloud Gateway)
+│   └── src/main/java/.../
+│       ├── config/          # SecurityConfig (JWT 검증)
+│       └── filter/          # TraceId, Idempotency, RateLimit 필터
+├── order-api/               # Order API service
+│   └── src/main/java/.../
+│       ├── config/          # SecurityConfig
+│       └── controller/      # OrderController
+├── keycloak/                # KeyCloak realm configuration
+│   └── realm-export.json
+├── docs/                    # Documentation
+│   ├── flow1-3.md           # 인증 플로우 코드 가이드
+│   ├── TEST.md              # 테스트 케이스
+│   └── test-setup.md        # 테스트 환경 설정
+└── docker-compose.yml
 ```
 
 ## Build Commands
@@ -38,14 +49,14 @@ spike-order/
 ./gradlew :gateway:test
 ./gradlew :order-api:test
 
-# Run a single test class
-./gradlew :order-api:test --tests "com.simiyami.orderapi.OrderApiApplicationTests"
+# Run integration tests (requires running services)
+./gradlew :gateway:test --tests "*AuthFlowIntegrationTest" -Dintegration.test.enabled=true
 ```
 
 ## Running the Application
 
 ```bash
-# 1. Start KeyCloak and PostgreSQL
+# 1. Start KeyCloak
 docker-compose up -d
 
 # 2. Run Gateway (port 8081)
@@ -55,28 +66,32 @@ docker-compose up -d
 ./gradlew :order-api:bootRun
 
 # 4. Get JWT token from KeyCloak
-curl -X POST http://localhost:8080/realms/spike-order/protocol/openid-connect/token \
+export TOKEN=$(curl -s -X POST http://localhost:8080/realms/spike-order/protocol/openid-connect/token \
   -d "grant_type=password" \
   -d "client_id=spike-order-client" \
   -d "username=testuser" \
-  -d "password=testpass"
+  -d "password=testpass" | jq -r .access_token)
 
 # 5. Call API through Gateway
-curl -H "Authorization: Bearer <JWT_TOKEN>" \
+curl -H "Authorization: Bearer $TOKEN" \
      -H "X-Idempotency-Key: $(uuidgen)" \
      http://localhost:8081/api/orders/me
 ```
 
 ## Port Configuration
 
-- KeyCloak: 8080
-- API Gateway: 8081
-- Order API: 8082
+| Service | Port |
+|---------|------|
+| KeyCloak | 8080 |
+| API Gateway | 8081 |
+| Order API | 8082 |
 
 ## Tech Stack
 
 - **Java 21** with **Spring Boot 3.4.1**
 - **Spring Cloud 2024.0.0** (Gateway)
+- **Spring Security OAuth2 Resource Server** (JWT validation)
+- **Bucket4j** (Rate Limiting)
 - Gradle multi-module build
 - JUnit 5 for testing
 - Docker Compose for local infrastructure
@@ -88,28 +103,55 @@ The system is designed around these core patterns (documented in detail in READM
 1. **Hot Path Minimization** - Only essential operations (order save + Outbox record) are synchronous; payment/notifications are async via Kafka
 2. **CQRS** - Read/write separation using Replica DB and Elasticsearch
 3. **Outbox Pattern** - Guarantees atomicity between DB transactions and event publishing
-4. **SAGA Pattern** - Compensating transactions for distributed failure scenarios (e.g., payment failure → inventory rollback → order cancellation)
-5. **Idempotency** - UUID-based idempotency keys with Redis TTL to prevent duplicate orders
+4. **SAGA Pattern** - Compensating transactions for distributed failure scenarios
+5. **Idempotency** - UUID-based idempotency keys to prevent duplicate orders
 6. **Singleflight Pattern** - Prevents cache stampede using Redis distributed locks
 
-## Implemented Features (Authentication Flow)
+## Implemented Features
 
-### Gateway Module (`gateway/`)
-- **JWT Validation**: OAuth2 Resource Server with KeyCloak integration
-- **Rate Limiting**: Token Bucket algorithm (100 req/min per user, 1000 req/min per IP)
-- **Idempotency Key Filter**: Validates UUID format for POST/PUT/PATCH requests
-- **Trace ID Filter**: Injects X-Trace-Id header for distributed tracing
+### Flow 1-3: 인증 플로우 (✅ Complete)
 
-### Order API Module (`order-api/`)
-- **JWT Validation**: OAuth2 Resource Server configuration
-- **Test Endpoints**: `/api/orders/health`, `/api/orders/me`
+상세 가이드: [docs/flow1-3.md](docs/flow1-3.md)
+
+#### Gateway Module (`gateway/`)
+
+| Component | File | Description |
+|-----------|------|-------------|
+| SecurityConfig | `config/SecurityConfig.java` | JWT 검증, OAuth2 Resource Server |
+| TraceIdFilter | `filter/TraceIdFilter.java` | X-Trace-Id 헤더 주입 (분산 추적) |
+| IdempotencyKeyFilter | `filter/IdempotencyKeyFilter.java` | POST/PUT/PATCH 멱등키 검증 |
+| RateLimitFilter | `filter/RateLimitFilter.java` | Token Bucket (100 req/min per user) |
+
+#### Order API Module (`order-api/`)
+
+| Component | File | Description |
+|-----------|------|-------------|
+| SecurityConfig | `config/SecurityConfig.java` | JWT 검증 |
+| OrderController | `controller/OrderController.java` | API 엔드포인트 |
+
+#### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/orders/health` | Required | 헬스체크 |
+| GET | `/api/orders/me` | Required | 현재 사용자 정보 |
+| POST | `/api/orders/test` | Required + Idempotency Key | 테스트 엔드포인트 |
+| GET | `/actuator/health` | Public | Actuator 헬스체크 |
+
+### Flow 4-6: Gateway 처리 (🔲 Not Started)
+### Flow 7-12: 주문 핫패스 (🔲 Not Started)
 
 ## Testing
 
-기능별 상세 테스트 방법은 [TEST.md](docs/TEST.md) 참조.
+### Documentation
+
+- **테스트 환경 설정**: [docs/test-setup.md](docs/test-setup.md)
+- **테스트 케이스**: [docs/TEST.md](docs/TEST.md)
+
+### Test Commands
 
 ```bash
-# 모든 유닛 테스트 실행
+# 단위 테스트
 ./gradlew test
 
 # Gateway 필터 테스트
@@ -117,7 +159,27 @@ The system is designed around these core patterns (documented in detail in READM
 
 # Order API 컨트롤러 테스트
 ./gradlew :order-api:test --tests "*ControllerTest"
+
+# 통합 테스트 (서비스 실행 필요)
+./gradlew :gateway:test --tests "*AuthFlowIntegrationTest" -Dintegration.test.enabled=true
 ```
+
+### Test Files
+
+| Test | Location |
+|------|----------|
+| TraceIdFilterTest | `gateway/src/test/.../filter/` |
+| IdempotencyKeyFilterTest | `gateway/src/test/.../filter/` |
+| RateLimitFilterTest | `gateway/src/test/.../filter/` |
+| AuthFlowIntegrationTest | `gateway/src/test/.../integration/` |
+| OrderControllerTest | `order-api/src/test/.../controller/` |
+
+## Test Accounts
+
+| User | Password | Role |
+|------|----------|------|
+| testuser | testpass | user |
+| admin | adminpass | user, admin |
 
 ## Response Time Target
 
