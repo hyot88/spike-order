@@ -17,8 +17,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 통합 테스트: TEST.md의 모든 테스트 케이스를 검증합니다.
- *
  * 사전 조건:
  * - docker-compose up -d (KeyCloak 실행)
  * - ./gradlew :gateway:bootRun (Gateway 실행)
