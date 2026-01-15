@@ -47,6 +47,7 @@
         "pkce.code.challenge.method": "S256"
       },
       "defaultClientScopes": [
+        "openid",
         "web-origins",
         "profile",
         "roles",
@@ -69,6 +70,7 @@
       "serviceAccountsEnabled": true,
       "protocol": "openid-connect",
       "defaultClientScopes": [
+        "openid",
         "web-origins",
         "profile",
         "roles",

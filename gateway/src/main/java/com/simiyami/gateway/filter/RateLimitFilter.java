@@ -7,6 +7,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -29,8 +30,7 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         return exchange.getPrincipal()
-            .map(Principal::getName)
-            .map(Optional::ofNullable)
+            .map(this::extractUserId)
             .defaultIfEmpty(Optional.empty())
             .flatMap(optionalUserId -> {
                 Bucket bucket;
@@ -57,6 +57,30 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
                     return exchange.getResponse().setComplete();
                 }
             });
+    }
+
+    private Optional<String> extractUserId(Principal principal) {
+        // JWT Authentication인 경우 preferred_username 또는 jti 사용
+        if (principal instanceof JwtAuthenticationToken jwtAuth) {
+            var jwt = jwtAuth.getToken();
+            // sub가 있으면 사용
+            if (jwt.getSubject() != null && !jwt.getSubject().isBlank()) {
+                return Optional.of(jwt.getSubject());
+            }
+            // 없으면 preferred_username 사용
+            String username = jwt.getClaimAsString("preferred_username");
+            if (username != null && !username.isBlank()) {
+                return Optional.of(username);
+            }
+            // 그것도 없으면 jti 사용
+            String jti = jwt.getId();
+            if (jti != null && !jti.isBlank()) {
+                return Optional.of(jti);
+            }
+        }
+        // 기본: getName() 사용
+        return Optional.ofNullable(principal.getName())
+            .filter(name -> !name.isBlank());
     }
 
     private String extractClientIp(ServerWebExchange exchange) {
@@ -88,6 +112,7 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
     @Override
     public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE + 2;
+        // Security 필터 이후에 실행되어야 Principal을 가져올 수 있음
+        return 0;
     }
 }

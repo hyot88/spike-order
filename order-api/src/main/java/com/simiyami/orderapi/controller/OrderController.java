@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -27,13 +28,14 @@ public class OrderController {
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId) {
 
-        return ResponseEntity.ok(Map.of(
-            "userId", jwt.getSubject(),
-            "username", jwt.getClaimAsString("preferred_username"),
-            "email", jwt.getClaimAsString("email"),
-            "idempotencyKey", idempotencyKey != null ? idempotencyKey : "not provided",
-            "traceId", traceId != null ? traceId : "not provided"
-        ));
+        Map<String, Object> response = new HashMap<>();
+        response.put("userId", jwt.getSubject() != null ? jwt.getSubject() : jwt.getId());
+        response.put("username", jwt.getClaimAsString("preferred_username"));
+        response.put("email", jwt.getClaimAsString("email"));
+        response.put("idempotencyKey", idempotencyKey != null ? idempotencyKey : "not provided");
+        response.put("traceId", traceId != null ? traceId : "not provided");
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/test")
@@ -43,12 +45,13 @@ public class OrderController {
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
             @RequestBody(required = false) Map<String, Object> body) {
 
-        return ResponseEntity.ok(Map.of(
-            "message", "POST request successful",
-            "userId", jwt.getSubject(),
-            "idempotencyKey", idempotencyKey,
-            "traceId", traceId != null ? traceId : "not provided",
-            "body", body != null ? body : Map.of()
-        ));
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "POST request successful");
+        response.put("userId", jwt.getSubject() != null ? jwt.getSubject() : jwt.getId());
+        response.put("idempotencyKey", idempotencyKey);
+        response.put("traceId", traceId != null ? traceId : "not provided");
+        response.put("body", body != null ? body : Map.of());
+
+        return ResponseEntity.ok(response);
     }
 }
