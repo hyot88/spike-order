@@ -7,3 +7,7 @@ dependencies {
     testImplementation 'io.projectreactor:reactor-test'
     testImplementation 'org.mockito:mockito-core'
 }
+
+test {
+    systemProperty 'integration.test.enabled', System.getProperty('integration.test.enabled', 'false')
+}

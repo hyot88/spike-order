@@ -25,9 +25,24 @@ class OrderControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("Health 엔드포인트는 인증 없이 접근 가능")
-    void healthEndpointShouldBeAccessibleWithoutAuth() throws Exception {
+    @DisplayName("Health 엔드포인트는 인증이 필요함 - 인증 없이 호출 시 401")
+    void healthEndpointShouldRequireAuth() throws Exception {
         mockMvc.perform(get("/api/orders/health"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Health 엔드포인트 - JWT 인증 시 정상 응답")
+    void healthEndpointShouldReturnOkWithAuth() throws Exception {
+        Jwt jwt = Jwt.withTokenValue("mock-token")
+            .header("alg", "RS256")
+            .subject("user-123")
+            .issuedAt(Instant.now())
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .build();
+
+        mockMvc.perform(get("/api/orders/health")
+                .with(jwt().jwt(jwt)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("UP"))
             .andExpect(jsonPath("$.service").value("order-api"));

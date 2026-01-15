@@ -18,7 +18,7 @@ public class TestSecurityConfig {
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/orders/health").permitAll()
+                .requestMatchers("/actuator/health").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> {}));
