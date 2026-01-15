@@ -106,7 +106,7 @@ The system is designed around these core patterns (documented in detail in READM
 
 ## Testing
 
-기능별 상세 테스트 방법은 [TEST.md](./TEST.md) 참조.
+기능별 상세 테스트 방법은 [TEST.md](docs/TEST.md) 참조.
 
 ```bash
 # 모든 유닛 테스트 실행
