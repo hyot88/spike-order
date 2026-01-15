@@ -112,6 +112,7 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
     @Override
     public int getOrder() {
+        // Spring Security 필터의 기본 순서는 -100
         // Security 필터 이후에 실행되어야 Principal을 가져올 수 있음
         return 0;
     }
