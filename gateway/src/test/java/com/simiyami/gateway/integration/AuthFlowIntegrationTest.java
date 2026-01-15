@@ -39,7 +39,11 @@ class AuthFlowIntegrationTest {
 
     @BeforeAll
     void setUp() {
-        String enabled = System.getProperty("integration.test.enabled", "false");
+        /**
+         * 현재 System.getProperty로 가져올때 default값은 무의미
+         * build.gradle에 선언한 값이 우선되므로 true를 세팅함 (임의로 true 세팅해놓음)
+         */
+        String enabled = System.getProperty("integration.test.enabled", "true");
         Assumptions.assumeTrue("true".equalsIgnoreCase(enabled),
             "통합 테스트를 실행하려면 -Dintegration.test.enabled=true 옵션을 추가하세요");
 

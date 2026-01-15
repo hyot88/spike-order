@@ -9,5 +9,5 @@ dependencies {
 }
 
 test {
-    systemProperty 'integration.test.enabled', System.getProperty('integration.test.enabled', 'false')
+    systemProperty 'integration.test.enabled', System.getProperty('integration.test.enabled', 'true')
 }
