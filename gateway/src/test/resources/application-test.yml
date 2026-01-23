@@ -1,0 +1,17 @@
+spring:
+  cloud:
+    discovery:
+      enabled: false
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        - id: order-api
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/orders/**
+
+eureka:
+  client:
+    enabled: false

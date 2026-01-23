@@ -6,9 +6,13 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
       routes:
         - id: order-api
-          uri: http://localhost:8082
+          uri: lb://ORDER-API
           predicates:
             - Path=/api/orders/**
           filters:
@@ -21,6 +25,16 @@ spring:
         jwt:
           issuer-uri: http://localhost:8080/realms/spike-order
           jwk-set-uri: http://localhost:8080/realms/spike-order/protocol/openid-connect/certs
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
 
 management:
   endpoints:
@@ -37,3 +51,4 @@ logging:
   level:
     org.springframework.cloud.gateway: DEBUG
     org.springframework.security: DEBUG
+    com.netflix.discovery: INFO

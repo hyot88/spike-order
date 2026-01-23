@@ -2,12 +2,16 @@ package com.simiyami.gateway;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
     "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://example.com",
-    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://example.com/.well-known/jwks.json"
+    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://example.com/.well-known/jwks.json",
+    "eureka.client.enabled=false",
+    "spring.cloud.discovery.enabled=false"
 })
 class GatewayApplicationTests {
 

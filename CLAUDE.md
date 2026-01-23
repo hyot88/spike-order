@@ -13,12 +13,17 @@ Multi-module Gradle project:
 spike-order/
 ├── gateway/                 # API Gateway (Spring Cloud Gateway)
 │   └── src/main/java/.../
-│       ├── config/          # SecurityConfig (JWT 검증)
-│       └── filter/          # TraceId, Idempotency, RateLimit 필터
+│       ├── config/          # SecurityConfig, StoreRateLimitConfig
+│       ├── controller/      # RateLimitAdminController
+│       └── filter/          # TraceId, Idempotency, RateLimit, StoreRateLimit 필터
 ├── order-api/               # Order API service
 │   └── src/main/java/.../
 │       ├── config/          # SecurityConfig
 │       └── controller/      # OrderController
+├── eureka-server/           # Eureka Server (Service Discovery)
+│   └── src/main/java/.../
+│       ├── EurekaServerApplication.java
+│       └── config/          # SecurityConfig
 ├── keycloak/                # KeyCloak realm configuration
 │   └── realm-export.json
 ├── docs/                    # Documentation
@@ -59,23 +64,29 @@ spike-order/
 # 1. Start KeyCloak
 docker-compose up -d
 
-# 2. Run Gateway (port 8081)
+# 2. Run Eureka Server (port 8761)
+./gradlew :eureka-server:bootRun
+
+# 3. Run Gateway (port 8081) - in another terminal
 ./gradlew :gateway:bootRun
 
-# 3. Run Order API (port 8082) - in another terminal
+# 4. Run Order API (port 8082) - in another terminal
 ./gradlew :order-api:bootRun
 
-# 4. Get JWT token from KeyCloak
+# 5. Get JWT token from KeyCloak
 export TOKEN=$(curl -s -X POST http://localhost:8080/realms/spike-order/protocol/openid-connect/token \
   -d "grant_type=password" \
   -d "client_id=spike-order-client" \
   -d "username=testuser" \
   -d "password=testpass" | jq -r .access_token)
 
-# 5. Call API through Gateway
+# 6. Call API through Gateway
 curl -H "Authorization: Bearer $TOKEN" \
      -H "X-Idempotency-Key: $(uuidgen)" \
      http://localhost:8081/api/orders/me
+
+# 7. Check Eureka Dashboard
+open http://localhost:8761
 ```
 
 ## Port Configuration
@@ -85,13 +96,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 | KeyCloak | 8080 |
 | API Gateway | 8081 |
 | Order API | 8082 |
+| Eureka Server | 8761 |
 
 ## Tech Stack
 
 - **Java 21** with **Spring Boot 3.4.1**
-- **Spring Cloud 2024.0.0** (Gateway)
+- **Spring Cloud 2024.0.0** (Gateway, Eureka, LoadBalancer)
 - **Spring Security OAuth2 Resource Server** (JWT validation)
 - **Bucket4j** (Rate Limiting)
+- **Netflix Eureka** (Service Discovery)
 - Gradle multi-module build
 - JUnit 5 for testing
 - Docker Compose for local infrastructure
@@ -138,7 +151,46 @@ The system is designed around these core patterns (documented in detail in READM
 | POST | `/api/orders/test` | Required + Idempotency Key | 테스트 엔드포인트 |
 | GET | `/actuator/health` | Public | Actuator 헬스체크 |
 
-### Flow 4-6: Gateway 처리 (🔲 Not Started)
+### Flow 4-6: Gateway 처리 (✅ Complete)
+
+#### Gateway Module (`gateway/`)
+
+| Component | File | Description |
+|-----------|------|-------------|
+| StoreRateLimitConfig | `config/StoreRateLimitConfig.java` | 가게별 Rate Limit 설정 저장소 (동적 조절) |
+| StoreRateLimitFilter | `filter/StoreRateLimitFilter.java` | 가게별 5000 req/min Rate Limit |
+| RateLimitAdminController | `controller/RateLimitAdminController.java` | 동적 Rate Limit 조절 Admin API |
+
+#### Eureka Server Module (`eureka-server/`)
+
+| Component | File | Description |
+|-----------|------|-------------|
+| EurekaServerApplication | `EurekaServerApplication.java` | Eureka Server 메인 클래스 |
+| SecurityConfig | `config/SecurityConfig.java` | Eureka 보안 설정 |
+
+#### Rate Limit Strategy
+
+| Type | Limit | Location |
+|------|-------|----------|
+| 사용자별 | 100 req/min | RateLimitFilter |
+| IP별 | 1000 req/min | RateLimitFilter |
+| 가게별 | 5000 req/min (동적 조절 가능) | StoreRateLimitFilter |
+
+#### Admin API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/admin/rate-limit/stores` | admin role | 모든 가게 Rate Limit 조회 |
+| GET | `/admin/rate-limit/stores/{storeId}` | admin role | 특정 가게 Rate Limit 조회 |
+| PUT | `/admin/rate-limit/stores/{storeId}` | admin role | 가게 Rate Limit 변경 |
+| DELETE | `/admin/rate-limit/stores/{storeId}` | admin role | 가게 Rate Limit 기본값 복원 |
+
+#### Service Discovery
+
+- Gateway와 Order API는 Eureka에 자동 등록
+- Gateway는 `lb://ORDER-API`로 로드밸런싱 라우팅
+- Health Check 기반 인스턴스 관리
+
 ### Flow 7-12: 주문 핫패스 (🔲 Not Started)
 
 ## Testing
@@ -171,7 +223,10 @@ The system is designed around these core patterns (documented in detail in READM
 | TraceIdFilterTest | `gateway/src/test/.../filter/` |
 | IdempotencyKeyFilterTest | `gateway/src/test/.../filter/` |
 | RateLimitFilterTest | `gateway/src/test/.../filter/` |
+| StoreRateLimitFilterTest | `gateway/src/test/.../filter/` |
+| StoreRateLimitConfigTest | `gateway/src/test/.../config/` |
 | AuthFlowIntegrationTest | `gateway/src/test/.../integration/` |
+| ServiceDiscoveryIntegrationTest | `gateway/src/test/.../integration/` |
 | OrderControllerTest | `order-api/src/test/.../controller/` |
 
 ## Test Accounts

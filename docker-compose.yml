@@ -44,6 +44,21 @@ services:
     networks:
       - spike-order-network
 
+  eureka-server:
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
+    container_name: spike-order-eureka
+    ports:
+      - "8761:8761"
+    networks:
+      - spike-order-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   spike-order-network:
     driver: bridge
